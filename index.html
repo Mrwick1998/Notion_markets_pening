@@ -7,72 +7,53 @@
   <script src="https://unpkg.com/luxon@3/build/global/luxon.min.js"></script>
   <style>
     :root{
-      --green:#17c964; --red:#f21361;
-      --bg:transparent; --panel:rgba(255,255,255,.9);
-      --text:#111; --muted:#666; --radius:10px; --shadow:0 5px 15px rgba(0,0,0,.1);
-      --tooltip-bg: rgba(0,0,0,.85); --tooltip-text: #fff;
+      --green:#17c964; --bg:transparent;
+      --panel:rgba(255,255,255,.95); --text:#111; --muted:#666;
+      --shadow:0 4px 12px rgba(0,0,0,.1);
     }
     @media (prefers-color-scheme: dark){
-      :root{ --panel:rgba(24,24,24,.9); --text:#eee; --muted:#aaa; --shadow:0 5px 20px rgba(0,0,0,.5);
-             --tooltip-bg: rgba(255,255,255,.95); --tooltip-text:#111; }
+      :root{ --panel:rgba(24,24,24,.9); --text:#eee; --muted:#aaa; --shadow:0 5px 20px rgba(0,0,0,.6); }
     }
-    html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
-    .wrap{max-width:800px;margin:0 auto;padding:10px;text-align:center;}
-    h1{font-size:16px;margin:0 0 4px;}
-    .sub{margin:0 0 10px;color:var(--muted);font-size:12px;}
+    html,body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; background:var(--bg); color:var(--text); }
+    .wrap{ max-width:800px; margin:0 auto; padding:10px; text-align:center; }
+    h1{ font-size:16px; margin:0 0 4px; }
+    .sub{ margin:0 0 10px; color:var(--muted); font-size:12px; }
+    .livebar{ display:flex; justify-content:center; align-items:center; gap:8px; font-size:10px; color:var(--muted); margin-bottom:12px; flex-wrap:wrap; }
+    .pill{ display:inline-flex; align-items:center; gap:6px; padding:2px 8px; border-radius:999px; background:rgba(23,201,100,.18); border:1px solid rgba(23,201,100,.35); color:#022b14; font-size:10px; font-weight:800; }
+    .pill .dot{ width:8px; height:8px; border-radius:50%; background:var(--green); }
+    @keyframes pulse{0%{transform:scale(1)}70%{transform:scale(1.05)}100%{transform:scale(1)}} .pill.blink .dot{ animation:pulse 1.1s ease-out; }
 
-    .livebar{display:flex;align-items:center;justify-content:center;gap:10px;font-size:10px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap;}
-    .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;background:rgba(23,201,100,.18);border:1px solid rgba(23,201,100,.35);color:#022b14;font-size:10px;font-weight:800;}
-    .pill .dot{width:8px;height:8px;border-radius:50%;background:var(--green);}
-    @keyframes pulse{0%{transform:scale(1)}70%{transform:scale(1.05)}100%{transform:scale(1)}}
-    .pill.blink .dot{animation:pulse 1.1s ease-out;}
-    .updated{margin-left:0;}
+    .grid{ display:flex; justify-content:center; flex-wrap:wrap; gap:10px; }
 
-    /* Tooltip */
-    .tip{position:relative; cursor:help; font-weight:700;}
-    .tip::after{
-      content: attr(data-tip);
-      position:absolute; left:50%; transform:translateX(-50%); bottom:120%;
-      background:var(--tooltip-bg); color:var(--tooltip-text);
-      padding:6px 8px; border-radius:6px; white-space:nowrap; font-size:11px;
-      opacity:0; pointer-events:none; transition:.15s ease; box-shadow:0 6px 18px rgba(0,0,0,.2);
-    }
-    .tip::before{
-      content:""; position:absolute; left:50%; transform:translateX(-50%); bottom:110%;
-      border:6px solid transparent; border-top-color:var(--tooltip-bg); opacity:0; transition:.15s ease;
-    }
-    .tip:hover::after, .tip:hover::before{opacity:1;}
+    .card{ background:var(--panel); border-radius:10px; box-shadow:var(--shadow); padding:6px; width:150px; transition:opacity .3s ease, filter .3s ease; }
+    .card.open{ opacity:1; filter:none; }
+    .card.closed{ opacity:.35; filter:grayscale(55%); }
 
-    .grid{display:flex;justify-content:center;flex-wrap:wrap;gap:10px;}
-    .card{background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow);padding:6px;border:2px solid transparent;width:150px;transition:border-color .2s ease;}
-    .card.open{border-color:rgba(23,201,100,.85);}
-    .card.closed{border-color:rgba(242,19,97,.85);}
+    .flag{ width:100%; aspect-ratio:3/2; object-fit:cover; border-radius:6px; margin-bottom:6px; }
 
-    .flag{width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:6px;margin-bottom:6px;display:block;}
+    .progress{ width:100%; height:6px; background:rgba(0,0,0,.08); border-radius:999px; overflow:hidden; margin:3px 0 4px; }
+    .progress-bar{ height:100%; width:0%; transition:width .6s ease; }
+    .progress-bar.open{ background:linear-gradient(90deg, rgba(23,201,100,.9), rgba(14,163,93,.9)); }
+    .progress-bar.before, .progress-bar.after{ background:rgba(128,128,128,.3); }
 
-    .progress{width:100%;height:6px;background:rgba(0,0,0,.08);border-radius:999px;overflow:hidden;margin:2px 0 8px;}
-    .progress-bar{height:100%;width:0%;transition:width .6s ease;}
-    .progress-bar.open{background:linear-gradient(90deg, rgba(23,201,100,.9), rgba(14,163,93,.9));}
-    .progress-bar.before{background:rgba(242,19,97,.25);}
-    .progress-bar.after{background:rgba(242,19,97,.85);}
+    .pct{ font-size:10px; color:var(--muted); margin-bottom:6px; }
 
-    .name{font-weight:600;font-size:12px;margin-bottom:2px;}
-    .badge{font-weight:700;font-size:10px;padding:2px 6px;border-radius:999px;border:1px solid transparent;display:inline-block;}
-    .badge.open{color:#022b14;background:rgba(23,201,100,.18);border-color:rgba(23,201,100,.3);}
-    .badge.closed{color:#2b020f;background:rgba(242,19,97,.16);border-color:rgba(242,19,97,.3);}
-    .meta{font-size:10px;line-height:1.3;color:var(--muted);}
-    .meta strong{color:var(--text);}
+    .name{ font-weight:600; font-size:12px; margin-bottom:2px; }
+    .badge{ font-weight:700; font-size:10px; padding:2px 6px; border-radius:999px; display:inline-flex; align-items:center; gap:4px; }
+    .badge.open{ color:#0c5; }     /* grünlich */
+    .badge.closed{ color:#888; }   /* grau */
+    .meta{ font-size:10px; line-height:1.3; color:var(--muted); }
+    .meta strong{ color:var(--text); }
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>Börsenstatus – London • New York • Tokyo • Sydney</h1>
-    <p class="sub">Zeiten aus deutscher Sicht (<strong>Europe/Berlin</strong>). Automatische Umstellung MEZ/CEST. Aktualisierung minütlich. (Feiertage werden nicht berücksichtigt.)</p>
+    <p class="sub">Zeiten aus deutscher Sicht (<strong>Europe/Berlin</strong>). Automatische Umstellung MEZ/CEST. Aktualisierung minütlich.</p>
 
     <div class="livebar">
       <span id="live" class="pill"><span class="dot"></span> LIVE</span>
-      <span id="dstLabel" class="tip" data-tip="CEST = Mitteleuropäische Sommerzeit · MEZ = Mitteleuropäische Zeit (Winterzeit)">–</span>
-      <span id="updated" class="updated">Zuletzt aktualisiert: –</span>
+      <span id="updated">Zuletzt aktualisiert: –</span>
     </div>
 
     <div id="grid" class="grid"></div>
@@ -80,143 +61,114 @@
 
   <script>
     const TARGET_TZ = "Europe/Berlin";
-    const DateTime = luxon.DateTime;
+    const { DateTime, Duration } = luxon;
+    const ms = d => d.toMillis();
 
-    // Zeiten fix aus deutscher Sicht (MEZ & CEST)
-    // Übernacht-Sessions (close < open) werden erkannt und korrekt über Mitternacht geführt.
+    // Zeiten aus deutscher Sicht (MEZ & CEST)
     const EXCHANGES = [
-      {
-        key:"sydney",
-        name:"Sydney (ASX)",
-        city:"Sydney",
-        flag:"https://flagcdn.com/w320/au.png",
-        mez:{ open:"23:00", close:"08:00" },   // über Mitternacht
-        cest:{ open:"00:00", close:"09:00" }   // über Mitternacht
-      },
-      {
-        key:"tokyo",
-        name:"Tokyo Stock Exchange (TSE)",
-        city:"Tokyo",
-        flag:"https://flagcdn.com/w320/jp.png",
-        mez:{ open:"01:00", close:"10:00" },
-        cest:{ open:"02:00", close:"11:00" }
-      },
-      {
-        key:"london",
-        name:"London Stock Exchange (LSE)",
-        city:"London",
-        flag:"https://flagcdn.com/w320/gb.png",
-        mez:{ open:"09:00", close:"18:00" },
-        cest:{ open:"10:00", close:"19:00" }
-      },
-      {
-        key:"newyork",
-        name:"New York (NYSE & Nasdaq)",
-        city:"New York",
-        flag:"https://flagcdn.com/w320/us.png",
-        mez:{ open:"14:00", close:"23:00" },
-        cest:{ open:"15:00", close:"00:00" }  // über Mitternacht
-      }
+      { key:"sydney",  name:"Sydney (ASX)",               flag:"https://flagcdn.com/w320/au.png",
+        mez:{open:"23:00", close:"08:00"}, cest:{open:"00:00", close:"09:00"} }, // über Nacht
+      { key:"tokyo",   name:"Tokyo Stock Exchange (TSE)", flag:"https://flagcdn.com/w320/jp.png",
+        mez:{open:"01:00", close:"10:00"}, cest:{open:"02:00", close:"11:00"} },
+      { key:"london",  name:"London Stock Exchange (LSE)",flag:"https://flagcdn.com/w320/gb.png",
+        mez:{open:"09:00", close:"18:00"}, cest:{open:"10:00", close:"19:00"} },
+      { key:"newyork", name:"New York (NYSE & Nasdaq)",   flag:"https://flagcdn.com/w320/us.png",
+        mez:{open:"14:00", close:"23:00"}, cest:{open:"15:00", close:"00:00"} }  // über Nacht
     ];
 
-    function parseHM(t){ const [h,m]=t.split(":").map(Number); return {h, m}; }
+    function parseHM(t){ const [h,m]=t.split(":").map(Number); return {hour:h, minute:m, second:0, millisecond:0}; }
 
-    // Liefert das heutige Session-Fenster in DE-Zeit (mit Übernacht-Behandlung)
-    function getTodayWindowDE(ex, nowDE){
-      const isDST = nowDE.isInDST;
-      const sch = isDST ? ex.cest : ex.mez;
-      const {h:oh,m:om} = parseHM(sch.open);
-      const {h:ch,m:cm} = parseHM(sch.close);
+    // Session-Fenster in DE-Zeit, korrekt über Mitternacht; berücksichtigt „gestern→heute“-Fenster
+    function getWindowDE(ex, nowDE){
+      const sch = nowDE.isInDST ? ex.cest : ex.mez;
 
-      let openToday  = nowDE.set({hour:oh, minute:om, second:0, millisecond:0});
-      let closeToday = nowDE.set({hour:ch, minute:cm, second:0, millisecond:0});
+      let openToday  = nowDE.set(parseHM(sch.open));
+      let closeToday = nowDE.set(parseHM(sch.close));
+      const crosses  = ms(closeToday) <= ms(openToday);
+      if (crosses) closeToday = closeToday.plus({days:1});
 
-      const crossesMidnight = closeToday <= openToday; // z.B. 23:00–08:00
-      if (crossesMidnight) closeToday = closeToday.plus({days:1});
-
-      // Falls wir gerade im Fenster der Vor-Nacht liegen (bei Übernacht)
-      if (crossesMidnight){
+      // Liegen wir im Fenster der VORNACHT?
+      if (crosses){
         const openPrev  = openToday.minus({days:1});
         const closePrev = closeToday.minus({days:1});
-        if (nowDE >= openPrev && nowDE <= closePrev){
-          return { open: openPrev, close: closePrev, crosses:true, sch };
+        if (ms(nowDE) >= ms(openPrev) && ms(nowDE) <= ms(closePrev)){
+          return { open: openPrev, close: closePrev };
         }
       }
-      return { open: openToday, close: closeToday, crosses: crossesMidnight, sch };
+      return { open: openToday, close: closeToday };
     }
 
-    function isOpenNowDE(ex, nowDE){
-      const w = getTodayWindowDE(ex, nowDE);
-      const open = nowDE >= w.open && nowDE <= w.close;
-      return { open, ...w };
+    function stateNow(ex, nowDE){
+      const {open, close} = getWindowDE(ex, nowDE);
+      if (ms(nowDE) < ms(open))  return { state:'before', open, close };
+      if (ms(nowDE) > ms(close)) return { state:'after',  open, close };
+      return { state:'open', open, close };
     }
 
-    // Fortschritt 0..1 + Statusklasse (before/open/after)
-    function sessionProgressDE(ex, nowDE){
-      const w = getTodayWindowDE(ex, nowDE);
-      if (nowDE < w.open)  return { pct:0, state:'before', ...w };
-      if (nowDE > w.close) return { pct:1, state:'after',  ...w };
-      const total  = w.close.toMillis() - w.open.toMillis();
-      const passed = nowDE.toMillis()   - w.open.toMillis();
-      return { pct: Math.max(0, Math.min(1, passed/total)), state:'open', ...w };
+    function progressNow(ex, nowDE){
+      const {state, open, close} = stateNow(ex, nowDE);
+      if (state === 'before') return { pct:0, state, open, close };
+      if (state === 'after')  return { pct:1, state, open, close };
+      const total  = ms(close) - ms(open);
+      const passed = ms(nowDE) - ms(open);
+      return { pct: Math.max(0, Math.min(1, passed/total)), state, open, close };
     }
 
-    // ETA-Format „Tage/Std/Min“
-    function formatETA(ms){
-      if (ms < 0) ms = 0;
-      const d = luxon.Duration.fromMillis(ms).shiftTo('days','hours','minutes').toObject();
-      const parts = [];
-      if (d.days)  parts.push(`${Math.floor(d.days)}T`);
-      if (d.hours) parts.push(`${Math.floor(d.hours)}h`);
-      parts.push(`${Math.floor(d.minutes || 0)}m`);
-      return parts.join(' ');
+    function etaText(msLeft){
+      if (msLeft < 0) msLeft = 0;
+      const d = Duration.fromMillis(msLeft).shiftTo('hours','minutes').toObject();
+      const h = Math.floor(d.hours || 0), m = Math.floor(d.minutes || 0);
+      return `${h}h ${m}m`;
     }
 
-    // „schließt in …“ / „öffnet in …“ (aus DE-Sicht)
-    function nextChangeETA_DE(ex, nowDE){
-      const st = isOpenNowDE(ex, nowDE);
-      if (st.open){
-        const eta = st.close.toMillis() - nowDE.toMillis();
-        return { label:"schließt in", etaText: formatETA(eta) };
-      } else {
-        // Nächste Öffnung: heute (falls noch davor) sonst morgen
-        const w = getTodayWindowDE(ex, nowDE);
-        let nextOpen = w.open;
-        if (nowDE >= w.open) nextOpen = w.open.plus({days:1});
-        const eta = nextOpen.toMillis() - nowDE.toMillis();
-        return { label:"öffnet in", etaText: formatETA(eta) };
+    function nextChangeText(ex, nowDE){
+      const {state, open, close} = stateNow(ex, nowDE);
+      if (state === 'open'){
+        return { label:'schließt in', eta: etaText(ms(close) - ms(nowDE)) };
       }
+      // nächster Open (heute wenn noch davor, sonst morgen)
+      let nextOpen = open;
+      if (ms(nowDE) >= ms(open)) nextOpen = open.plus({days:1});
+      return { label:'öffnet in', eta: etaText(ms(nextOpen) - ms(nowDE)) };
     }
 
-    // Anzeige „Heute (DE): HH:mm – HH:mm“ (zeigt den aktiven MEZ/CEST-Slot)
-    function todaysLabelDE(ex, nowDE){
-      const isDST = nowDE.isInDST;
-      const sch = isDST ? ex.cest : ex.mez;
+    function todaysLabel(ex, nowDE){
+      const sch = nowDE.isInDST ? ex.cest : ex.mez;
       return `${sch.open} – ${sch.close}`;
     }
 
     const grid  = document.getElementById('grid');
     const liveEl= document.getElementById('live');
     const updEl = document.getElementById('updated');
-    const dstEl = document.getElementById('dstLabel');
 
-    function cardHTML(ex, st, labelToday, nxt, nowTxt, prog){
-      const badge = st.open ? `<span class="badge open">OPEN</span>` : `<span class="badge closed">CLOSED</span>`;
-      const cls   = st.open ? 'card open' : 'card closed';
-      const pct   = Math.round(prog.pct*100);
-      const pClass = prog.state === 'open' ? 'open' : (prog.state === 'after' ? 'after' : 'before');
+    function renderCard(ex, nowDE){
+      const prog = progressNow(ex, nowDE);
+      const openBool = prog.state === 'open';
+      const nxt = nextChangeText(ex, nowDE);
+      const pct = Math.round(prog.pct * 100);
+      const pctLine =
+        prog.state === 'open'
+          ? `${pct}% der heutigen Session abgeschlossen`
+          : (prog.state === 'before'
+               ? `0% – startet in ${nxt.eta}`
+               : `100% – öffnet in ${nxt.eta}`);
+
+      const badge = openBool
+        ? `<span class="badge open">💼 OPEN</span>`
+        : `<span class="badge closed">🌙 CLOSED</span>`;
+
+      const pClass = (prog.state === 'open') ? 'open' : (prog.state === 'before' ? 'before' : 'after');
+
       return `
-        <div class="${cls}" id="card-${ex.key}">
-          <img class="flag" src="${ex.flag}" alt="Flagge ${ex.city}">
-          <div class="progress" aria-label="Fortschritt Handelssitzung">
-            <div class="progress-bar ${pClass}" style="width:${pct}%;"></div>
-          </div>
+        <div class="card ${openBool ? 'open' : 'closed'}">
+          <img class="flag" src="${ex.flag}" alt="${ex.name}">
+          <div class="progress"><div class="progress-bar ${pClass}" style="width:${pct}%;"></div></div>
+          <div class="pct">🕒 ${pctLine}</div>
           <div class="name">${ex.name}</div>
           ${badge}
           <div class="meta">
-            <div><strong>Heute (DE):</strong> ${labelToday}</div>
-            <div><strong>Jetzt (DE):</strong> ${nowTxt}</div>
-            <div><strong>Nächster Wechsel:</strong> ${nxt.label} ${nxt.etaText}</div>
+            <div><strong>Heute (DE):</strong> ${todaysLabel(ex, nowDE)}</div>
+            <div><strong>Nächster Wechsel:</strong> ${nxt.label} ${nxt.eta}</div>
           </div>
         </div>
       `;
@@ -224,26 +176,12 @@
 
     function update(){
       const nowDE = DateTime.now().setZone(TARGET_TZ);
-      const nowTxt = nowDE.toFormat("EEE, dd.LL, HH:mm");
-
-      // LIVE & DST-Label inkl. Tooltip
       const dstText = nowDE.isInDST ? "CEST (Sommerzeit)" : "MEZ (Winterzeit)";
       liveEl.innerHTML = `<span class="dot"></span> LIVE · Aktuell: ${dstText}`;
-      dstEl.textContent = "ℹ️";
-      dstEl.setAttribute("aria-label", "Info zu MEZ/CEST");
-      // Tooltip-Text ist im CSS via data-tip gesetzt
-
-      // Karten rendern
-      grid.innerHTML = EXCHANGES.map(ex=>{
-        const st    = isOpenNowDE(ex, nowDE);
-        const lab   = todaysLabelDE(ex, nowDE);
-        const nxt   = nextChangeETA_DE(ex, nowDE);
-        const prog  = sessionProgressDE(ex, nowDE);
-        return cardHTML(ex, st, lab, nxt, nowTxt, prog);
-      }).join("");
-
       updEl.textContent = "Zuletzt aktualisiert: " + nowDE.toFormat("dd.LL.yyyy HH:mm:ss 'Uhr'");
-      liveEl.classList.add('blink'); setTimeout(()=>liveEl.classList.remove('blink'),1100);
+
+      grid.innerHTML = EXCHANGES.map(ex => renderCard(ex, nowDE)).join("");
+      liveEl.classList.add('blink'); setTimeout(()=>liveEl.classList.remove('blink'), 1000);
     }
 
     update();

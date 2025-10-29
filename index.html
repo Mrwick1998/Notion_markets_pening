@@ -22,7 +22,6 @@
       --stroke: rgba(90,90,90,0.35);
       --shadow: 0 10px 30px rgba(0,0,0,.12);
       --radius: 14px;
-      --accent: #00c2ff;
     }
     @media (prefers-color-scheme: dark){
       :root{
@@ -37,7 +36,7 @@
     html,body{height:100%;margin:0;background:var(--bg);color:var(--text);
       font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans";}
     .wrap{
-      display:grid;grid-template-rows:minmax(420px,55vh) 1fr;gap:16px;padding:16px;
+      display:grid;grid-template-rows:minmax(420px,55vh) auto;gap:16px;padding:16px;
       max-width:1200px;margin:0 auto;box-sizing:border-box;
     }
     #map-wrap{
@@ -56,18 +55,38 @@
     .panel{background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow);
       padding:16px;backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.08);}
     .panel h2{margin:0 0 8px 0;font-size:18px;font-weight:700;letter-spacing:.2px;}
-    .panel .sub{margin:0 0 16px 0;color:var(--muted);font-size:13px;}
+    .panel .sub{margin:0 0 8px 0;color:var(--muted);font-size:13px;}
 
-    .list{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;}
-    .item{border:1px solid rgba(127,127,127,.15);border-radius:12px;padding:12px;background:rgba(255,255,255,.65);backdrop-filter:blur(6px);}
-    @media (prefers-color-scheme: dark){.item{background:rgba(20,20,20,.7);}}
-    .row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
-    .title{font-weight:600;font-size:15px;}
-    .badge{font-weight:800;font-size:11px;padding:4px 8px;border-radius:999px;letter-spacing:.4px;border:1px solid transparent;}
+    /* LIVE-Badge + Zeitstempel */
+    .livebar{display:flex;align-items:center;gap:12px;margin:6px 0 12px 0;}
+    .live-pill{
+      display:inline-flex;align-items:center;gap:8px;
+      font-size:12px;font-weight:800;letter-spacing:.4px;
+      padding:4px 10px;border-radius:999px;user-select:none;
+      background:rgba(23,201,100,.18);border:1px solid rgba(23,201,100,.35);color:#022b14;
+    }
+    .live-pill .dot{width:10px;height:10px;border-radius:50%;background:#17c964;box-shadow:0 0 0 rgba(23,201,100,0);}
+    .updated{font-size:12px;color:var(--muted);}
+    @keyframes pulse {
+      0%{transform:scale(1);box-shadow:0 0 0 0 rgba(23,201,100,.6);}
+      70%{transform:scale(1.05);box-shadow:0 0 18px 8px rgba(23,201,100,0);}
+      100%{transform:scale(1);box-shadow:0 0 0 0 rgba(23,201,100,0);}
+    }
+    .live-pill.blink .dot{animation:pulse 1.2s ease-out;}
+
+    /* Tabelle */
+    .table-wrap{overflow:auto;border-radius:12px;border:1px solid rgba(127,127,127,.15);}
+    table{width:100%;border-collapse:collapse;background:rgba(255,255,255,.65);}
+    @media (prefers-color-scheme: dark){table{background:rgba(20,20,20,.7);}}
+    thead{position:sticky;top:0;background:rgba(0,0,0,.04);backdrop-filter:blur(4px);}
+    th, td{padding:10px 12px;font-size:13px;text-align:left;border-bottom:1px solid rgba(127,127,127,.15);}
+    th{font-weight:700;}
+    .badge{
+      display:inline-block;font-weight:800;font-size:11px;padding:4px 8px;border-radius:999px;
+      border:1px solid transparent;letter-spacing:.4px;
+    }
     .badge.open{color:#022b14;background:rgba(23,201,100,.18);border-color:rgba(23,201,100,.3);}
     .badge.closed{color:#2b020f;background:rgba(242,19,97,.16);border-color:rgba(242,19,97,.28);}
-    .meta{margin-top:8px;color:var(--muted);font-size:12px;line-height:1.35;}
-
     .country.open{filter: drop-shadow(0 0 6px rgba(23,201,100,.7));}
   </style>
 </head>
@@ -83,11 +102,29 @@
 
     <div class="panel">
       <h2>Weltweite Börsen – Öffnungszeiten & Status (DE-Zeit)</h2>
-      <p class="sub">
-        Alle Uhrzeiten werden in <strong>deutscher Zeit (Europe/Berlin)</strong> angezeigt und berücksichtigen die <strong>Zeitumstellung</strong>. 
-        Aktualisiert sich automatisch jede Minute. (Feiertage/Sonderhandelstage sind nicht berücksichtigt.)
-      </p>
-      <div id="list" class="list"></div>
+      <p class="sub">Alle Uhrzeiten werden in <strong>deutscher Zeit (Europe/Berlin)</strong> angezeigt und berücksichtigen die <strong>Zeitumstellung</strong>. Aktualisiert sich automatisch jede Minute. (Feiertage/Sonderhandelstage sind nicht berücksichtigt.)</p>
+
+      <!-- LIVE-Badge + Zeitstempel -->
+      <div class="livebar">
+        <span id="live-indicator" class="live-pill"><span class="dot"></span> LIVE</span>
+        <span id="last-updated" class="updated">Zuletzt aktualisiert: –</span>
+      </div>
+
+      <!-- Tabelle -->
+      <div class="table-wrap">
+        <table aria-label="Börsenzeiten in deutscher Zeit">
+          <thead>
+            <tr>
+              <th>Börse</th>
+              <th>Ort</th>
+              <th>Öffnungszeiten (heute, DE-Zeit)</th>
+              <th>Status</th>
+              <th>Nächster Wechsel (DE-Zeit)</th>
+            </tr>
+          </thead>
+          <tbody id="markets-tbody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -95,8 +132,7 @@
     // ====== Zentrale Anzeige-Zeitzone: Deutschland ======
     const TARGET_TZ = "Europe/Berlin"; // alles, was du siehst, ist in DE-Zeit
 
-    // ====== Börsen-Auswahl (nur die 4 gewünschten) ======
-    // countryNames müssen der Beschriftung im World-Atlas-Datensatz entsprechen.
+    // ====== Börsen (nur London, New York, Tokyo, Sydney) ======
     const EXCHANGES = [
       { name: "London Stock Exchange (LSE)", city: "London", countryNames: ["United Kingdom"], tz: "Europe/London", open: "08:00", close: "16:30", weekdays: [1,2,3,4,5] },
       { name: "New York (NYSE & Nasdaq)",    city: "New York", countryNames: ["United States of America"], tz: "America/New_York", open: "09:30", close: "16:00", weekdays: [1,2,3,4,5] },
@@ -104,12 +140,11 @@
       { name: "Sydney (ASX)",                city: "Sydney", countryNames: ["Australia"], tz: "Australia/Sydney", open: "10:00", close: "16:00", weekdays: [1,2,3,4,5] },
     ];
 
-    // ====== Hilfsfunktionen für Zeit ======
+    // ====== Zeit-Helfer ======
     const DateTime = luxon.DateTime;
-
     function parseHM(t){ const [h,m]=t.split(":").map(Number); return {h,m}; }
 
-    // Handelslogik: in der LOKALEN Börsenzeit prüfen (somit korrekt bzgl. DST am Handelsplatz)
+    // Handelslogik: in LOKALER Börsenzeit prüfen (korrekt bzgl. dortiger DST)
     function isOpenNow(ex, nowUtc = DateTime.utc()){
       const localNow = nowUtc.setZone(ex.tz);
       const dow = localNow.weekday; // 1=Mo ... 7=So
@@ -124,13 +159,12 @@
       return { open, localNow, openT, closeT };
     }
 
-    // Anzeige: Nächste Öffnung/Schließung – aber in DE-Zeit (TARGET_TZ)
+    // Nächster Wechsel – Anzeige in DE-Zeit
     function nextChangeDisplayDE(ex, nowUtc = DateTime.utc()){
       const st = isOpenNow(ex, nowUtc);
       if (st.open){
         return { label: "schließt um", timeDE: st.closeT.setZone(TARGET_TZ).toFormat("HH:mm") };
       } else {
-        // Nächste Öffnung finden (heute, falls noch davor; sonst nächster zulässiger Werktag)
         const localNow = nowUtc.setZone(ex.tz);
         for (let d=0; d<=10; d++){
           const candidate = localNow.plus({ days: d });
@@ -146,9 +180,8 @@
       }
     }
 
-    // Öffnungs-/Schließzeiten für HEUTE in DE-Zeit umgerechnet (nur Anzeige)
+    // Öffnungsfenster heute – in DE-Zeit anzeigen
     function todaysWindowInDE(ex, nowUtc = DateTime.utc()){
-      // Nimm das "heutige" Datum in der lokalen Börsen-TZ, bau open/close dort, dann nach DE umrechnen
       const localNow = nowUtc.setZone(ex.tz);
       const {h:oh,m:om} = parseHM(ex.open);
       const {h:ch,m:cm} = parseHM(ex.close);
@@ -161,7 +194,7 @@
       return `${openDE.toFormat("HH:mm")} – ${closeDE.toFormat("HH:mm")}`;
     }
 
-    // ========= Karte aufbauen =========
+    // ====== Karte ======
     const mapWrap = document.getElementById('map-wrap');
     const svg = d3.select('#map');
     const g = svg.append('g');
@@ -211,49 +244,57 @@
       sel.exit().remove();
     }
 
-    // ========= Liste & Status =========
-    const listEl = document.getElementById('list');
+    // ====== LIVE-Badge / Zeitstempel ======
+    const liveEl = () => document.getElementById('live-indicator');
+    const updEl  = () => document.getElementById('last-updated');
+    function pingLive(){
+      const el = liveEl(); if(!el) return;
+      el.classList.add('blink'); setTimeout(()=>el.classList.remove('blink'), 1200);
+    }
+    function setUpdated(nowUtc){
+      const stamp = nowUtc.setZone(TARGET_TZ).toFormat("dd.LL.yyyy HH:mm:ss 'Uhr'");
+      const el = updEl(); if(el) el.textContent = `Zuletzt aktualisiert: ${stamp}`;
+    }
+
+    // ====== Tabelle + Status ======
+    const tbodyEl = document.getElementById('markets-tbody');
 
     function updateAll(){
       const nowUtc = luxon.DateTime.utc();
       const openCountries = new Set();
 
-      listEl.innerHTML = '';
-
+      // Tabelle neu aufbauen
+      tbodyEl.innerHTML = '';
       EXCHANGES.forEach(ex=>{
         const st = isOpenNow(ex, nowUtc);
         const nxt = nextChangeDisplayDE(ex, nowUtc);
+        if (st.open) ex.countryNames.forEach(n => openCountries.add(n));
 
-        if (st.open){ ex.countryNames.forEach(n => openCountries.add(n)); }
-
-        const isBusinessDay = st.localNow ? ex.weekdays.includes(st.localNow.weekday) : true;
+        const tr = document.createElement('tr');
         const badgeClass = st.open ? 'open' : 'closed';
         const badgeText  = st.open ? 'OPEN' : 'CLOSED';
 
-        const item = document.createElement('div');
-        item.className = 'item';
-        item.innerHTML = `
-          <div class="row">
-            <div class="title">${ex.name}</div>
-            <div class="badge ${badgeClass}">${badgeText}</div>
-          </div>
-          <div class="meta">
-            <div><strong>Ort:</strong> ${ex.city} · <strong>Börsen-TZ:</strong> ${ex.tz}</div>
-            <div><strong>Öffnungszeiten (heute, DE-Zeit):</strong> ${todaysWindowInDE(ex, nowUtc)} ${isBusinessDay ? '(Mo–Fr)' : ''}</div>
-            <div><strong>Jetzt (DE-Zeit):</strong> ${nowUtc.setZone(TARGET_TZ).toFormat("EEE, dd.LL, HH:mm")}</div>
-            <div><strong>Nächster Wechsel (DE-Zeit):</strong> ${nxt.label} ${nxt.timeDE}</div>
-          </div>
+        tr.innerHTML = `
+          <td>${ex.name}</td>
+          <td>${ex.city}</td>
+          <td>${todaysWindowInDE(ex, nowUtc)}</td>
+          <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+          <td>${nxt.label} ${nxt.timeDE}</td>
         `;
-        listEl.appendChild(item);
+        tbodyEl.appendChild(tr);
       });
 
+      // Karte färben
       const statusByName = new Map();
       countries.forEach(c=>{
         const name = getCountryName(c);
         statusByName.set(name, openCountries.has(name));
       });
-
       draw(statusByName);
+
+      // LIVE-UI updaten
+      setUpdated(nowUtc);
+      pingLive();
     }
   </script>
 </body>

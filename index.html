@@ -1,172 +1,210 @@
-<script>
-  // ===== Anzeige-Zeitzone (DE) =====
-  const TARGET_TZ = "Europe/Berlin";
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Börsenstatus – Flags (DE-Zeit)</title>
 
-  // ===== Börsen (nur 4) =====
-  const EXCHANGES = [
-    { name: "London Stock Exchange (LSE)", city: "London", countryNames: ["United Kingdom"], tz: "Europe/London", open: "08:00", close: "16:30", weekdays: [1,2,3,4,5] },
-    { name: "New York (NYSE & Nasdaq)",    city: "New York", countryNames: ["United States of America"], tz: "America/New_York", open: "09:30", close: "16:00", weekdays: [1,2,3,4,5] },
-    { name: "Tokyo Stock Exchange (TSE)",  city: "Tokyo", countryNames: ["Japan"], tz: "Asia/Tokyo", open: "09:00", close: "15:00", weekdays: [1,2,3,4,5] },
-    { name: "Sydney (ASX)",                city: "Sydney", countryNames: ["Australia"], tz: "Australia/Sydney", open: "10:00", close: "16:00", weekdays: [1,2,3,4,5] },
-  ];
+  <!-- Nur Luxon für Zeitzonen/DST -->
+  <script src="https://unpkg.com/luxon@3/build/global/luxon.min.js"></script>
 
-  // ===== Zeit-Helfer =====
-  const DateTime = luxon.DateTime;
-  function parseHM(t){ const [h,m]=t.split(":").map(Number); return {h,m}; }
+  <style>
+    :root{
+      --green:#17c964;
+      --red:#f21361;
+      --bg: transparent;
+      --panel: rgba(255,255,255,.9);
+      --text: #111;
+      --muted:#666;
+      --radius:16px;
+      --shadow:0 12px 32px rgba(0,0,0,.12);
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --panel: rgba(24,24,24,.9);
+        --text:#eee;
+        --muted:#aaa;
+        --shadow:0 12px 40px rgba(0,0,0,.5);
+      }
+    }
+    html,body{margin:0;background:var(--bg);color:var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;}
+    .wrap{max-width:1200px;margin:0 auto;padding:20px;box-sizing:border-box;}
+    h1{font-size:18px;margin:0 0 8px;}
+    .sub{margin:0 0 16px;color:var(--muted);font-size:13px}
 
-  function isOpenNow(ex, nowUtc = DateTime.utc()){
-    const localNow = nowUtc.setZone(ex.tz);
-    const dow = localNow.weekday; // 1..7
-    if (!ex.weekdays.includes(dow)) return {open:false, localNow};
-    const {h:oh, m:om} = parseHM(ex.open);
-    const {h:ch, m:cm} = parseHM(ex.close);
-    const openT  = localNow.set({ hour: oh, minute: om, second: 0, millisecond: 0 });
-    const closeT = localNow.set({ hour: ch, minute: cm, second: 0, millisecond: 0 });
-    const open = localNow >= openT && localNow <= closeT;
-    return { open, localNow, openT, closeT };
-  }
+    .livebar{display:flex;align-items:center;gap:12px;margin:6px 0 18px 0;}
+    .pill{display:inline-flex;align-items:center;gap:8px;
+      font-size:12px;font-weight:800;letter-spacing:.4px;padding:4px 10px;border-radius:999px;
+      background:rgba(23,201,100,.18);border:1px solid rgba(23,201,100,.35);color:#022b14;}
+    .pill .dot{width:10px;height:10px;border-radius:50%;background:var(--green);}
+    .updated{font-size:12px;color:var(--muted);}
+    @keyframes pulse{0%{transform:scale(1)}70%{transform:scale(1.05)}100%{transform:scale(1)}}
+    .pill.blink .dot{animation:pulse 1.1s ease-out;}
 
-  function nextChangeDisplayDE(ex, nowUtc = DateTime.utc()){
-    const st = isOpenNow(ex, nowUtc);
-    if (st.open){
-      return { label: "schließt um", timeDE: st.closeT.setZone(TARGET_TZ).toFormat("HH:mm") };
-    } else {
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(4, minmax(180px,1fr));
+      gap:16px;
+    }
+    @media (max-width:900px){ .grid{grid-template-columns: repeat(2, minmax(180px,1fr));} }
+    @media (max-width:520px){ .grid{grid-template-columns: 1fr;} }
+
+    .card{
+      background:var(--panel);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:12px;
+      border:2px solid transparent;
+      transition: box-shadow .2s ease, border-color .2s ease;
+    }
+    .card.open   { border-color: rgba(23,201,100,.8); box-shadow: 0 0 0 2px rgba(23,201,100,.28), var(--shadow); }
+    .card.closed { border-color: rgba(242,19,97,.85); box-shadow: 0 0 0 2px rgba(242,19,97,.25), var(--shadow); }
+
+    .flag{
+      width:100%; aspect-ratio: 3/2; object-fit: cover;
+      border-radius:12px;
+      display:block;
+      margin-bottom:10px;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,.15);
+    }
+    .row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;}
+    .name{font-weight:700;font-size:14px;}
+    .badge{font-weight:800;font-size:11px;padding:4px 8px;border-radius:999px; border:1px solid transparent;}
+    .badge.open{color:#022b14;background:rgba(23,201,100,.18);border-color:rgba(23,201,100,.35);}
+    .badge.closed{color:#2b020f;background:rgba(242,19,97,.16);border-color:rgba(242,19,97,.28);}
+    .meta{font-size:12px;color:var(--muted);line-height:1.35;}
+    .meta strong{color:var(--text)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Börsenstatus – London • New York • Tokyo • Sydney</h1>
+    <p class="sub">Alle Zeiten in <strong>deutscher Zeit (Europe/Berlin)</strong>, inkl. Sommer-/Winterzeit. Aktualisiert sich automatisch jede Minute (Mo–Fr, Feiertage ignoriert).</p>
+
+    <div class="livebar">
+      <span id="live" class="pill"><span class="dot"></span> LIVE</span>
+      <span id="updated" class="updated">Zuletzt aktualisiert: –</span>
+    </div>
+
+    <div id="grid" class="grid"></div>
+  </div>
+
+  <script>
+    // === Daten ===
+    const TARGET_TZ = "Europe/Berlin"; // Anzeige-Zeitzone (DE)
+    const DateTime = luxon.DateTime;
+
+    // 4 Börsen – Öffnungszeiten in LOKALER Börsenzeit
+    const EXCHANGES = [
+      {
+        key: "london",  name: "London Stock Exchange (LSE)", city: "London",
+        flag: "https://flagcdn.com/w320/gb.png",
+        tz: "Europe/London", open: "08:00", close: "16:30", weekdays: [1,2,3,4,5]
+      },
+      {
+        key: "newyork", name: "New York (NYSE & Nasdaq)",   city: "New York",
+        flag: "https://flagcdn.com/w320/us.png",
+        tz: "America/New_York", open: "09:30", close: "16:00", weekdays: [1,2,3,4,5]
+      },
+      {
+        key: "tokyo",   name: "Tokyo Stock Exchange (TSE)", city: "Tokyo",
+        flag: "https://flagcdn.com/w320/jp.png",
+        tz: "Asia/Tokyo", open: "09:00", close: "15:00", weekdays: [1,2,3,4,5]
+      },
+      {
+        key: "sydney",  name: "Sydney (ASX)",               city: "Sydney",
+        flag: "https://flagcdn.com/w320/au.png",
+        tz: "Australia/Sydney", open: "10:00", close: "16:00", weekdays: [1,2,3,4,5]
+      }
+    ];
+
+    // === Zeit-Helfer ===
+    function parseHM(t){ const [h,m]=t.split(":").map(Number); return {h, m}; }
+
+    // prüft "jetzt" in der lokalen Börsenzeit
+    function isOpenNow(ex, nowUtc = DateTime.utc()){
       const localNow = nowUtc.setZone(ex.tz);
-      for (let d=0; d<=10; d++){
-        const candidate = localNow.plus({ days: d });
-        if (ex.weekdays.includes(candidate.weekday)){
-          const {h:oh,m:om} = parseHM(ex.open);
-          const openC = candidate.set({ hour: oh, minute: om, second: 0, millisecond: 0 });
-          if (d>0 || localNow < openC){
-            return { label: "öffnet um", timeDE: openC.setZone(TARGET_TZ).toFormat("HH:mm") };
+      if(!ex.weekdays.includes(localNow.weekday)) return {open:false, localNow};
+      const {h:oh,m:om} = parseHM(ex.open);
+      const {h:ch,m:cm} = parseHM(ex.close);
+      const openT  = localNow.set({hour:oh, minute:om, second:0, millisecond:0});
+      const closeT = localNow.set({hour:ch, minute:cm, second:0, millisecond:0});
+      return { open: localNow >= openT && localNow <= closeT, localNow, openT, closeT };
+    }
+
+    // Öffnungsfenster "heute" in DE-Zeit anzeigen
+    function todaysWindowDE(ex, nowUtc = DateTime.utc()){
+      const localBase = nowUtc.setZone(ex.tz);
+      const {h:oh,m:om} = parseHM(ex.open);
+      const {h:ch,m:cm} = parseHM(ex.close);
+      const openLocal  = localBase.set({hour:oh, minute:om, second:0, millisecond:0});
+      const closeLocal = localBase.set({hour:ch, minute:cm, second:0, millisecond:0});
+      return `${openLocal.setZone(TARGET_TZ).toFormat("HH:mm")} – ${closeLocal.setZone(TARGET_TZ).toFormat("HH:mm")}`;
+    }
+
+    function nextChangeDE(ex, nowUtc = DateTime.utc()){
+      const st = isOpenNow(ex, nowUtc);
+      if(st.open){
+        return {label:"schließt um", time: st.closeT.setZone(TARGET_TZ).toFormat("HH:mm")};
+      } else {
+        const localNow = nowUtc.setZone(ex.tz);
+        for(let d=0; d<10; d++){
+          const cand = localNow.plus({days:d});
+          if(ex.weekdays.includes(cand.weekday)){
+            const {h:oh,m:om} = parseHM(ex.open);
+            const openC = cand.set({hour:oh, minute:om, second:0, millisecond:0});
+            if(d>0 || localNow < openC) return {label:"öffnet um", time: openC.setZone(TARGET_TZ).toFormat("HH:mm")};
           }
         }
+        return {label:"öffnet um", time:"—"};
       }
-      return { label: "öffnet um", timeDE: "—" };
     }
-  }
 
-  function todaysWindowInDE(ex, nowUtc = DateTime.utc()){
-    const localNow = nowUtc.setZone(ex.tz);
-    const {h:oh,m:om} = parseHM(ex.open);
-    const {h:ch,m:cm} = parseHM(ex.close);
-    const openLocal  = localNow.set({ hour: oh, minute: om, second: 0, millisecond: 0 });
-    const closeLocal = localNow.set({ hour: ch, minute: cm, second: 0, millisecond: 0 });
-    const openDE  = openLocal.setZone(TARGET_TZ);
-    const closeDE = closeLocal.setZone(TARGET_TZ);
-    return `${openDE.toFormat("HH:mm")} – ${closeDE.toFormat("HH:mm")}`;
-  }
+    // === Rendering ===
+    const grid = document.getElementById('grid');
+    function cardHTML(ex, st, windowDE, nxt, nowDE){
+      const badge = st.open ? `<span class="badge open">OPEN</span>` : `<span class="badge closed">CLOSED</span>`;
+      const cls = st.open ? 'card open' : 'card closed';
+      return `
+        <div class="${cls}" id="card-${ex.key}">
+          <img class="flag" src="${ex.flag}" alt="Flagge ${ex.city}">
+          <div class="row">
+            <div class="name">${ex.name}</div>
+            ${badge}
+          </div>
+          <div class="meta">
+            <div><strong>Ort:</strong> ${ex.city} · <strong>Börsen-TZ:</strong> ${ex.tz}</div>
+            <div><strong>Öffnungszeiten (heute, DE-Zeit):</strong> ${windowDE}</div>
+            <div><strong>Jetzt (DE-Zeit):</strong> ${nowDE}</div>
+            <div><strong>Nächster Wechsel (DE-Zeit):</strong> ${nxt.label} ${nxt.time}</div>
+          </div>
+        </div>
+      `;
+    }
 
-  // ===== Karte vorbereiten =====
-  const mapWrap = document.getElementById('map-wrap');
-  const svg = d3.select('#map');
-  const g = svg.append('g');
-  const projection = d3.geoEquirectangular();
-  const path = d3.geoPath(projection);
-  function resize(){
-    const {clientWidth: w, clientHeight: h} = mapWrap;
-    svg.attr('width', w).attr('height', h);
-    projection.fitExtent([[10,10],[w-10, h-10]], {type:"Sphere"});
-    draw(); // neu zeichnen
-  }
-  window.addEventListener('resize', resize);
+    const liveEl = document.getElementById('live');
+    const updEl  = document.getElementById('updated');
 
-  let countries = [];
-  let countriesReady = false;
+    function update(){
+      const nowUtc = DateTime.utc();
+      const nowDE  = nowUtc.setZone(TARGET_TZ).toFormat("EEE, dd.LL, HH:mm");
 
-  // --- robust: Karte laden, aber UI funktioniert auch OHNE Karte ---
-  fetch('https://unpkg.com/world-atlas@2/countries-110m.json')
-    .then(r => r.json())
-    .then(world => {
-      countries = topojson.feature(world, world.objects.countries).features;
-      countriesReady = true;
-      resize();
-      draw(); // erster Paint
-    })
-    .catch(() => {
-      countriesReady = false; // kein Abbruch – Tabelle/Status laufen trotzdem
-    });
-
-  function getCountryName(d){
-    return d && d.properties && (d.properties.name || d.properties.NAME || d.properties.admin) || '';
-  }
-
-  function draw(statusByName = new Map()){
-    if (!countriesReady) return; // wenn Karte nicht da ist, einfach auslassen
-    const sel = g.selectAll('path.country').data(countries, d => d.id);
-    sel.enter()
-      .append('path')
-      .attr('class','country')
-      .attr('d', path)
-      .attr('fill', d => statusByName.get(getCountryName(d)) ? 'rgba(23,201,100,0.95)' : getComputedStyle(document.documentElement).getPropertyValue('--greyCountry').trim())
-      .attr('stroke', getComputedStyle(document.documentElement).getPropertyValue('--stroke').trim())
-      .attr('stroke-width', 0.6)
-      .classed('open', d => !!statusByName.get(getCountryName(d)))
-    .merge(sel)
-      .transition().duration(400)
-      .attr('fill', d => statusByName.get(getCountryName(d)) ? 'rgba(23,201,100,0.95)' : getComputedStyle(document.documentElement).getPropertyValue('--greyCountry').trim())
-      .classed('open', d => !!statusByName.get(getCountryName(d)));
-    sel.exit().remove();
-  }
-
-  // ===== LIVE-Badge / Zeitstempel =====
-  const liveEl = () => document.getElementById('live-indicator');
-  const updEl  = () => document.getElementById('last-updated');
-  function pingLive(){ const el = liveEl(); if(!el) return; el.classList.add('blink'); setTimeout(()=>el.classList.remove('blink'), 1200); }
-  function setUpdated(nowUtc){
-    const stamp = nowUtc.setZone(TARGET_TZ).toFormat("dd.LL.yyyy HH:mm:ss 'Uhr'");
-    const el = updEl(); if(el) el.textContent = `Zuletzt aktualisiert: ${stamp}`;
-  }
-
-  // ===== Tabelle + Status =====
-  const tbodyEl = document.getElementById('markets-tbody');
-
-  function updateAll(){
-    try{
-      const nowUtc = luxon.DateTime.utc();
-      const openCountries = new Set();
-      if (tbodyEl) tbodyEl.innerHTML = '';
-
-      EXCHANGES.forEach(ex=>{
+      grid.innerHTML = EXCHANGES.map(ex=>{
         const st = isOpenNow(ex, nowUtc);
-        const nxt = nextChangeDisplayDE(ex, nowUtc);
-        if (st.open) ex.countryNames.forEach(n => openCountries.add(n));
+        const w  = todaysWindowDE(ex, nowUtc);
+        const nx = nextChangeDE(ex, nowUtc);
+        return cardHTML(ex, st, w, nx, nowDE);
+      }).join("");
 
-        if (tbodyEl){
-          const tr = document.createElement('tr');
-          const badgeClass = st.open ? 'open' : 'closed';
-          const badgeText  = st.open ? 'OPEN' : 'CLOSED';
-          tr.innerHTML = `
-            <td>${ex.name}</td>
-            <td>${ex.city}</td>
-            <td>${todaysWindowInDE(ex, nowUtc)}</td>
-            <td><span class="badge ${badgeClass}">${badgeText}</span></td>
-            <td>${nxt.label} ${nxt.timeDE}</td>
-          `;
-          tbodyEl.appendChild(tr);
-        }
-      });
-
-      // Karte färben (falls geladen)
-      const statusByName = new Map();
-      if (countriesReady){
-        countries.forEach(c=>{
-          const name = getCountryName(c);
-          statusByName.set(name, openCountries.has(name));
-        });
-        draw(statusByName);
-      }
-
-      setUpdated(nowUtc);
-      pingLive();
-    } catch(e){
-      // zeige leichten Hinweis im Zeitstempel, damit man es sieht
-      const el = updEl(); if(el) el.textContent = "Zuletzt aktualisiert: Fehler beim Rendern";
-      console.error(e);
+      // LIVE Indikator
+      updEl.textContent = "Zuletzt aktualisiert: " + nowUtc.setZone(TARGET_TZ).toFormat("dd.LL.yyyy HH:mm:ss 'Uhr'");
+      liveEl.classList.add('blink');
+      setTimeout(()=>liveEl.classList.remove('blink'),1100);
     }
-  }
 
-  // --- WICHTIG: sofort starten, unabhängig von der Karte ---
-  updateAll();
-  setInterval(updateAll, 60*1000);
-</script>
+    update();
+    setInterval(update, 60*1000);
+  </script>
+</body>
+</html>

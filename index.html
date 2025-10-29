@@ -26,25 +26,28 @@
     .grid{ display:flex; justify-content:center; flex-wrap:wrap; gap:10px; }
 
     .card{ background:var(--panel); border-radius:10px; box-shadow:var(--shadow); padding:8px; width:170px; }
-    /* Statt ganze Karte zu verblassen, nur markierte Teile dimmen */
+    /* Nur bestimmte Teile dimmen, nicht die ganze Karte */
     .card.closed .dim{ opacity:.35; filter:grayscale(55%); }
 
     .flag{ width:100%; aspect-ratio:3/2; object-fit:cover; border-radius:6px; margin-bottom:6px; }
 
-    .progress{ width:100%; height:6px; background:rgba(0,0,0,.08); border-radius:999px; overflow:hidden; margin:3px 0 4px; }
+    /* Bar + % in einer Zeile */
+    .progrow{ display:flex; align-items:center; gap:6px; margin:3px 0 6px; }
+    .progress{ flex:1; height:6px; background:rgba(0,0,0,.08); border-radius:999px; overflow:hidden; }
     .progress-bar{ height:100%; width:0%; transition:width .6s ease; }
     .progress-bar.open{ background:linear-gradient(90deg, rgba(23,201,100,.9), rgba(14,163,93,.9)); }
     .progress-bar.before, .progress-bar.after{ background:rgba(128,128,128,.3); }
-
-    .pct{ font-size:10px; color:var(--muted); margin-bottom:6px; }
+    .pct-inline{ width:34px; text-align:right; font-size:10px; color:var(--muted); }
 
     .name{ font-weight:600; font-size:12px; margin-bottom:2px; }
-    .badge{ font-weight:700; font-size:10px; padding:2px 6px; border-radius:999px; display:inline-flex; align-items:center; gap:4px; }
+    /* Badge/Status bleibt IMMER klar sichtbar */
+    .badge{ font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:6px; margin:2px 0 6px; }
     .badge.open{ color:#0c5; }     /* grünlich */
-    .badge.closed{ color:#888; }   /* grau */
+    .badge.closed{ color:#888; }   /* grau, aber NICHT ausgegraut durch .dim */
 
-    .nextline{ font-size:11px; margin:4px 0 6px; }
-    .nextline strong{ color:var(--text); }
+    /* „Öffnet in …“ – bleibt immer klar sichtbar */
+    .openline{ font-size:11px; margin:0 0 6px; }
+    .openline strong{ color:var(--text); }
 
     .meta{ font-size:10px; line-height:1.3; color:var(--muted); }
     .meta strong{ color:var(--text); }
@@ -82,7 +85,7 @@
 
     function parseHM(t){ const [h,m]=t.split(":").map(Number); return {hour:h, minute:m, second:0, millisecond:0}; }
 
-    // Session-Fenster korrekt über Mitternacht; berücksichtigt „gestern→heute“-Fenster
+    // Session-Fenster mit Übernacht-Behandlung & ggf. Vortagsfenster
     function getWindowDE(ex, nowDE){
       const sch = nowDE.isInDST ? ex.cest : ex.mez;
 
@@ -118,22 +121,26 @@
       return { pct: Math.max(0, Math.min(1, passed/total)), state, open, close };
     }
 
-    function etaText(msLeft){
+    // T / h / m
+    function etaDaysHoursMinutes(msLeft){
       if (msLeft < 0) msLeft = 0;
-      const d = Duration.fromMillis(msLeft).shiftTo('hours','minutes').toObject();
-      const h = Math.floor(d.hours || 0), m = Math.floor(d.minutes || 0);
-      return `${h}h ${m}m`;
+      const d = Duration.fromMillis(msLeft).shiftTo('days','hours','minutes').toObject();
+      const days  = Math.floor(d.days || 0);
+      const hours = Math.floor(d.hours || 0);
+      const mins  = Math.floor(d.minutes || 0);
+      const parts = [];
+      if (days) parts.push(`${days}T`);
+      parts.push(`${hours}h`);
+      parts.push(`${mins}m`);
+      return parts.join(' ');
     }
 
-    function nextChangeText(ex, nowDE){
-      const {state, open, close} = stateNow(ex, nowDE);
-      if (state === 'open'){
-        return { label:'schließt in', eta: etaText(ms(close) - ms(nowDE)) };
-      }
+    function opensInText(ex, nowDE){
       // nächster Open (heute wenn noch davor, sonst morgen)
+      const { open } = getWindowDE(ex, nowDE);
       let nextOpen = open;
       if (ms(nowDE) >= ms(open)) nextOpen = open.plus({days:1});
-      return { label:'öffnet in', eta: etaText(ms(nextOpen) - ms(nowDE)) };
+      return etaDaysHoursMinutes(ms(nextOpen) - ms(nowDE));
     }
 
     function todaysLabel(ex, nowDE){
@@ -147,34 +154,30 @@
 
     function renderCard(ex, nowDE){
       const prog = progressNow(ex, nowDE);
-      const openBool = prog.state === 'open';
-      const nxt = nextChangeText(ex, nowDE);
+      const isOpen = prog.state === 'open';
       const pct = Math.round(prog.pct * 100);
-      const pctLine =
-        prog.state === 'open'
-          ? `${pct}% der heutigen Session abgeschlossen`
-          : (prog.state === 'before'
-               ? `0% – startet in ${nxt.eta}`
-               : `100% – öffnet in ${nxt.eta}`);
 
-      const badge = openBool
-        ? `<span class="badge open">💼 OPEN</span>`
-        : `<span class="badge closed">🌙 CLOSED</span>`;
+      // Statuszeile:
+      const statusLine = isOpen
+        ? `<div class="badge open">💼 OPEN</div>`
+        : `<div class="badge closed">🌙 CLOSED</div>`;
 
-      const pClass = (prog.state === 'open') ? 'open' : (prog.state === 'before' ? 'before' : 'after');
+      // „öffnet in …“ nur anzeigen, wenn geschlossen – KLAR sichtbar (nicht gedimmt)
+      const openIn = isOpen ? "" : `<div class="openline"><strong>öffnet in:</strong> ${opensInText(ex, nowDE)}</div>`;
 
-      /* WICHTIG:
-         - Alle „dim“-Elemente werden bei geschlossenen Karten ausgegraut.
-         - Die .nextline bleibt IMMER klar sichtbar. */
+      const pClass = isOpen ? 'open' : (prog.state === 'before' ? 'before' : 'after');
+
       return `
-        <div class="card ${openBool ? 'open' : 'closed'}">
+        <div class="card ${isOpen ? 'open' : 'closed'}">
           <img class="flag dim" src="${ex.flag}" alt="${ex.name}">
-          <div class="progress dim"><div class="progress-bar ${pClass}" style="width:${pct}%;"></div></div>
-          <div class="pct dim">🕒 ${pctLine}</div>
-          <div class="name dim">${ex.name}</div>
-          <div class="dim">${badge}</div>
+          <div class="progrow">
+            <div class="progress dim"><div class="progress-bar ${pClass}" style="width:${pct}%;"></div></div>
+            <div class="pct-inline">${pct}%</div>
+          </div>
 
-          <div class="nextline"><strong>Nächster Wechsel:</strong> ${nxt.label} ${nxt.eta}</div>
+          <div class="name dim">${ex.name}</div>
+          ${statusLine}
+          ${openIn}
 
           <div class="meta dim">
             <div><strong>Heute (DE):</strong> ${todaysLabel(ex, nowDE)}</div>

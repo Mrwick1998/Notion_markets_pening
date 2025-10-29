@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Welt-Börsenstatus – Notion Widget (2D, DE-Zeit)</title>
+
+  <!-- Bibliotheken: D3, TopoJSON, Luxon -->
+  <script src="https://unpkg.com/d3@7/dist/d3.min.js"></script>
+  <script src="https://unpkg.com/topojson-client@3"></script>
+  <script src="https://unpkg.com/luxon@3/build/global/luxon.min.js"></script>
+
+  <style>
+    :root{
+      --bg: transparent;
+      --panel: rgba(255,255,255,0.9);
+      --text: #111;
+      --muted: #666;
+      --green: #17c964;   /* OPEN */
+      --red: #f21361;     /* CLOSED */
+      --greyCountry: #bfbfbf;
+      --stroke: rgba(90,90,90,0.35);
+      --shadow: 0 10px 30px rgba(0,0,0,.12);
+      --radius: 14px;
+      --accent: #00c2ff;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --panel: rgba(20,20,20,0.85);
+        --text: #eee;
+        --muted: #aaa;
+        --greyCountry: #808080;
+        --stroke: rgba(180,180,180,0.25);
+        --shadow: 0 10px 30px rgba(0,0,0,.5);
+      }
+    }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans";}
+    .wrap{
+      display:grid;grid-template-rows:minmax(420px,55vh) 1fr;gap:16px;padding:16px;
+      max-width:1200px;margin:0 auto;box-sizing:border-box;
+    }
+    #map-wrap{
+      position:relative;overflow:hidden;border-radius:var(--radius);box-shadow:var(--shadow);
+      background: radial-gradient(1000px 600px at 10% 10%, rgba(0,194,255,.08), transparent 40%),
+                  radial-gradient(800px 500px at 90% 30%, rgba(23,201,100,.08), transparent 35%);
+    }
+    .legend{
+      position:absolute;left:12px;bottom:12px;background:var(--panel);padding:10px 12px;border-radius:10px;
+      font-size:12px;line-height:1.2;backdrop-filter: blur(8px);border:1px solid rgba(255,255,255,0.1);
+    }
+    .legend .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;}
+    .legend .open{background:var(--green);}
+    .legend .closed{background:var(--greyCountry);border:1px solid var(--muted);}
+
+    .panel{background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow);
+      padding:16px;backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.08);}
+    .panel h2{margin:0 0 8px 0;font-size:18px;font-weight:700;letter-spacing:.2px;}
+    .panel .sub{margin:0 0 16px 0;color:var(--muted);font-size:13px;}
+
+    .list{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;}
+    .item{border:1px solid rgba(127,127,127,.15);border-radius:12px;padding:12px;background:rgba(255,255,255,.65);backdrop-filter:blur(6px);}
+    @media (prefers-color-scheme: dark){.item{background:rgba(20,20,20,.7);}}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+    .title{font-weight:600;font-size:15px;}
+    .badge{font-weight:800;font-size:11px;padding:4px 8px;border-radius:999px;letter-spacing:.4px;border:1px solid transparent;}
+    .badge.open{color:#022b14;background:rgba(23,201,100,.18);border-color:rgba(23,201,100,.3);}
+    .badge.closed{color:#2b020f;background:rgba(242,19,97,.16);border-color:rgba(242,19,97,.28);}
+    .meta{margin-top:8px;color:var(--muted);font-size:12px;line-height:1.35;}
+
+    .country.open{filter: drop-shadow(0 0 6px rgba(23,201,100,.7));}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div id="map-wrap">
+      <svg id="map" role="img" aria-label="Weltkarte offener Börsen"></svg>
+      <div class="legend">
+        <div><span class="dot open"></span>Offene Börse</div>
+        <div><span class="dot closed"></span>Geschlossen</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Weltweite Börsen – Öffnungszeiten & Status (DE-Zeit)</h2>
+      <p class="sub">
+        Alle Uhrzeiten werden in <strong>deutscher Zeit (Europe/Berlin)</strong> angezeigt und berücksichtigen die <strong>Zeitumstellung</strong>. 
+        Aktualisiert sich automatisch jede Minute. (Feiertage/Sonderhandelstage sind nicht berücksichtigt.)
+      </p>
+      <div id="list" class="list"></div>
+    </div>
+  </div>
+
+  <script>
+    // ====== Zentrale Anzeige-Zeitzone: Deutschland ======
+    const TARGET_TZ = "Europe/Berlin"; // alles, was du siehst, ist in DE-Zeit
+
+    // ====== Börsen-Auswahl (nur die 4 gewünschten) ======
+    // countryNames müssen der Beschriftung im World-Atlas-Datensatz entsprechen.
+    const EXCHANGES = [
+      { name: "London Stock Exchange (LSE)", city: "London", countryNames: ["United Kingdom"], tz: "Europe/London", open: "08:00", close: "16:30", weekdays: [1,2,3,4,5] },
+      { name: "New York (NYSE & Nasdaq)",    city: "New York", countryNames: ["United States of America"], tz: "America/New_York", open: "09:30", close: "16:00", weekdays: [1,2,3,4,5] },
+      { name: "Tokyo Stock Exchange (TSE)",  city: "Tokyo", countryNames: ["Japan"], tz: "Asia/Tokyo", open: "09:00", close: "15:00", weekdays: [1,2,3,4,5] },
+      { name: "Sydney (ASX)",                city: "Sydney", countryNames: ["Australia"], tz: "Australia/Sydney", open: "10:00", close: "16:00", weekdays: [1,2,3,4,5] },
+    ];
+
+    // ====== Hilfsfunktionen für Zeit ======
+    const DateTime = luxon.DateTime;
+
+    function parseHM(t){ const [h,m]=t.split(":").map(Number); return {h,m}; }
+
+    // Handelslogik: in der LOKALEN Börsenzeit prüfen (somit korrekt bzgl. DST am Handelsplatz)
+    function isOpenNow(ex, nowUtc = DateTime.utc()){
+      const localNow = nowUtc.setZone(ex.tz);
+      const dow = localNow.weekday; // 1=Mo ... 7=So
+      if (!ex.weekdays.includes(dow)) return {open:false, localNow};
+
+      const {h:oh, m:om} = parseHM(ex.open);
+      const {h:ch, m:cm} = parseHM(ex.close);
+      const openT  = localNow.set({ hour: oh, minute: om, second: 0, millisecond: 0 });
+      const closeT = localNow.set({ hour: ch, minute: cm, second: 0, millisecond: 0 });
+
+      const open = localNow >= openT && localNow <= closeT;
+      return { open, localNow, openT, closeT };
+    }
+
+    // Anzeige: Nächste Öffnung/Schließung – aber in DE-Zeit (TARGET_TZ)
+    function nextChangeDisplayDE(ex, nowUtc = DateTime.utc()){
+      const st = isOpenNow(ex, nowUtc);
+      if (st.open){
+        return { label: "schließt um", timeDE: st.closeT.setZone(TARGET_TZ).toFormat("HH:mm") };
+      } else {
+        // Nächste Öffnung finden (heute, falls noch davor; sonst nächster zulässiger Werktag)
+        const localNow = nowUtc.setZone(ex.tz);
+        for (let d=0; d<=10; d++){
+          const candidate = localNow.plus({ days: d });
+          if (ex.weekdays.includes(candidate.weekday)){
+            const {h:oh,m:om} = parseHM(ex.open);
+            const openC = candidate.set({ hour: oh, minute: om, second: 0, millisecond: 0 });
+            if (d>0 || localNow < openC){
+              return { label: "öffnet um", timeDE: openC.setZone(TARGET_TZ).toFormat("HH:mm") };
+            }
+          }
+        }
+        return { label: "öffnet um", timeDE: "—" };
+      }
+    }
+
+    // Öffnungs-/Schließzeiten für HEUTE in DE-Zeit umgerechnet (nur Anzeige)
+    function todaysWindowInDE(ex, nowUtc = DateTime.utc()){
+      // Nimm das "heutige" Datum in der lokalen Börsen-TZ, bau open/close dort, dann nach DE umrechnen
+      const localNow = nowUtc.setZone(ex.tz);
+      const {h:oh,m:om} = parseHM(ex.open);
+      const {h:ch,m:cm} = parseHM(ex.close);
+
+      const openLocal  = localNow.set({ hour: oh, minute: om, second: 0, millisecond: 0 });
+      const closeLocal = localNow.set({ hour: ch, minute: cm, second: 0, millisecond: 0 });
+
+      const openDE  = openLocal.setZone(TARGET_TZ);
+      const closeDE = closeLocal.setZone(TARGET_TZ);
+      return `${openDE.toFormat("HH:mm")} – ${closeDE.toFormat("HH:mm")}`;
+    }
+
+    // ========= Karte aufbauen =========
+    const mapWrap = document.getElementById('map-wrap');
+    const svg = d3.select('#map');
+    const g = svg.append('g');
+
+    const projection = d3.geoEquirectangular();
+    const path = d3.geoPath(projection);
+
+    function resize(){
+      const {clientWidth: w, clientHeight: h} = mapWrap;
+      svg.attr('width', w).attr('height', h);
+      projection.fitExtent([[10,10],[w-10, h-10]], {type:"Sphere"});
+      draw(); // neu zeichnen
+    }
+    window.addEventListener('resize', resize);
+
+    let countries = [];
+    Promise.all([
+      fetch('https://unpkg.com/world-atlas@2/countries-110m.json').then(r=>r.json())
+    ]).then(([world])=>{
+      const features = topojson.feature(world, world.objects.countries).features;
+      countries = features;
+      resize();
+      updateAll();                 // initial
+      setInterval(updateAll, 60*1000); // minütlich
+    });
+
+    function getCountryName(d){
+      return d && d.properties && (d.properties.name || d.properties.NAME || d.properties.admin) || '';
+    }
+
+    function draw(statusByName = new Map()){
+      const sel = g.selectAll('path.country').data(countries, d => d.id);
+
+      sel.enter()
+        .append('path')
+        .attr('class','country')
+        .attr('d', path)
+        .attr('fill', d => statusByName.get(getCountryName(d)) ? 'rgba(23,201,100,0.95)' : getComputedStyle(document.documentElement).getPropertyValue('--greyCountry').trim())
+        .attr('stroke', getComputedStyle(document.documentElement).getPropertyValue('--stroke').trim())
+        .attr('stroke-width', 0.6)
+        .classed('open', d => !!statusByName.get(getCountryName(d)))
+      .merge(sel)
+        .transition().duration(400)
+        .attr('fill', d => statusByName.get(getCountryName(d)) ? 'rgba(23,201,100,0.95)' : getComputedStyle(document.documentElement).getPropertyValue('--greyCountry').trim())
+        .classed('open', d => !!statusByName.get(getCountryName(d)));
+
+      sel.exit().remove();
+    }
+
+    // ========= Liste & Status =========
+    const listEl = document.getElementById('list');
+
+    function updateAll(){
+      const nowUtc = luxon.DateTime.utc();
+      const openCountries = new Set();
+
+      listEl.innerHTML = '';
+
+      EXCHANGES.forEach(ex=>{
+        const st = isOpenNow(ex, nowUtc);
+        const nxt = nextChangeDisplayDE(ex, nowUtc);
+
+        if (st.open){ ex.countryNames.forEach(n => openCountries.add(n)); }
+
+        const isBusinessDay = st.localNow ? ex.weekdays.includes(st.localNow.weekday) : true;
+        const badgeClass = st.open ? 'open' : 'closed';
+        const badgeText  = st.open ? 'OPEN' : 'CLOSED';
+
+        const item = document.createElement('div');
+        item.className = 'item';
+        item.innerHTML = `
+          <div class="row">
+            <div class="title">${ex.name}</div>
+            <div class="badge ${badgeClass}">${badgeText}</div>
+          </div>
+          <div class="meta">
+            <div><strong>Ort:</strong> ${ex.city} · <strong>Börsen-TZ:</strong> ${ex.tz}</div>
+            <div><strong>Öffnungszeiten (heute, DE-Zeit):</strong> ${todaysWindowInDE(ex, nowUtc)} ${isBusinessDay ? '(Mo–Fr)' : ''}</div>
+            <div><strong>Jetzt (DE-Zeit):</strong> ${nowUtc.setZone(TARGET_TZ).toFormat("EEE, dd.LL, HH:mm")}</div>
+            <div><strong>Nächster Wechsel (DE-Zeit):</strong> ${nxt.label} ${nxt.timeDE}</div>
+          </div>
+        `;
+        listEl.appendChild(item);
+      });
+
+      const statusByName = new Map();
+      countries.forEach(c=>{
+        const name = getCountryName(c);
+        statusByName.set(name, openCountries.has(name));
+      });
+
+      draw(statusByName);
+    }
+  </script>
+</body>
+</html>

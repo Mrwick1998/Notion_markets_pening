@@ -66,7 +66,7 @@
       box-shadow:var(--shadow);
       padding:6px;
       border:2px solid transparent;
-      width:150px;                /* << klein & gleichmäßig */
+      width:150px;                /* kompakt */
       transition:border-color .2s ease;
     }
     .card.open{   border-color:rgba(23,201,100,.8); }
@@ -76,6 +76,24 @@
       width:100%; height:auto; border-radius:6px; margin-bottom:6px;
       display:block;
     }
+
+    /* Progress-Bar unter der Flagge */
+    .progress{
+      width:100%;
+      height:6px;
+      background: rgba(0,0,0,.08);
+      border-radius:999px;
+      overflow:hidden;
+      margin:2px 0 8px 0;
+    }
+    .progress-bar{
+      height:100%;
+      width:0%;
+      transition: width .6s ease;
+    }
+    .progress-bar.open   { background: linear-gradient(90deg, rgba(23,201,100,.9), rgba(14,163,93,.9)); }
+    .progress-bar.before { background: rgba(242,19,97,.25); } /* vor Öffnung: leer (0%) */
+    .progress-bar.after  { background: rgba(242,19,97,.85); } /* nach Schließung: 100% rot */
 
     .name{ font-weight:600; font-size:12px; margin-bottom:2px; }
     .badge{
@@ -120,12 +138,13 @@
     // prüft "jetzt" in der lokalen Börsenzeit
     function isOpenNow(ex, nowUtc = DateTime.utc()){
       const localNow = nowUtc.setZone(ex.tz);
-      if(!ex.weekdays.includes(localNow.weekday)) return {open:false, localNow};
+      if(!ex.weekdays.includes(localNow.weekday)) return {open:false, localNow, openT:null, closeT:null, state:'offday'};
       const {h:oh,m:om} = parseHM(ex.open);
       const {h:ch,m:cm} = parseHM(ex.close);
       const openT  = localNow.set({hour:oh, minute:om, second:0, millisecond:0});
       const closeT = localNow.set({hour:ch, minute:cm, second:0, millisecond:0});
-      return { open: localNow >= openT && localNow <= closeT, localNow, openT, closeT };
+      const open = localNow >= openT && localNow <= closeT;
+      return { open, localNow, openT, closeT, state: open ? 'open' : (localNow < openT ? 'before' : 'after') };
     }
 
     // Öffnungsfenster "heute" in DE-Zeit anzeigen
@@ -142,18 +161,26 @@
       const st = isOpenNow(ex, nowUtc);
       if(st.open){
         return {label:"schließt um", time: st.closeT.setZone(TARGET_TZ).toFormat("HH:mm")};
+      } else if (st.state === 'before') {
+        const {h:oh,m:om} = parseHM(ex.open);
+        const openNext = st.localNow.set({hour:oh, minute:om, second:0, millisecond:0});
+        return {label:"öffnet um", time: openNext.setZone(TARGET_TZ).toFormat("HH:mm")};
       } else {
-        const localNow = nowUtc.setZone(ex.tz);
-        for(let d=0; d<10; d++){
-          const cand = localNow.plus({days:d});
-          if(ex.weekdays.includes(cand.weekday)){
-            const {h:oh,m:om} = parseHM(ex.open);
-            const openC = cand.set({hour:oh, minute:om, second:0, millisecond:0});
-            if(d>0 || localNow < openC) return {label:"öffnet um", time: openC.setZone(TARGET_TZ).toFormat("HH:mm")};
-          }
-        }
-        return {label:"öffnet um", time:"—"};
+        return {label:"öffnet um", time:"—"}; // nach Schließung (vereinfachte Anzeige)
       }
+    }
+
+    // Fortschritt der heutigen Sitzung (0..1) + Zustand
+    function sessionProgress(ex, nowUtc = DateTime.utc()){
+      const st = isOpenNow(ex, nowUtc);
+      if (st.state === 'offday') return { pct: 0, state: 'before' }; // Wochenende/Feiertag wie "vor Öffnung"
+      if (st.state === 'before') return { pct: 0, state: 'before' };
+      if (st.state === 'after')  return { pct: 1, state: 'after' };
+      // offen:
+      const total = st.closeT.toMillis() - st.openT.toMillis();
+      const passed = st.localNow.toMillis() - st.openT.toMillis();
+      const pct = Math.max(0, Math.min(1, passed / total));
+      return { pct, state: 'open' };
     }
 
     // === Rendering ===
@@ -161,12 +188,21 @@
     const liveEl= document.getElementById('live');
     const updEl = document.getElementById('updated');
 
-    function cardHTML(ex, st, windowDE, nxt, nowDE){
+    function cardHTML(ex, st, windowDE, nxt, nowDE, prog){
       const badge = st.open ? `<span class="badge open">OPEN</span>` : `<span class="badge closed">CLOSED</span>`;
       const cls   = st.open ? 'card open' : 'card closed';
+      const pct   = Math.round(prog.pct * 100);
+
+      // Klasse für Progress-Farbe
+      const pClass = prog.state === 'open' ? 'open' : (prog.state === 'after' ? 'after' : 'before');
+
       return `
         <div class="${cls}" id="card-${ex.key}">
           <img class="flag" src="${ex.flag}" alt="Flagge ${ex.city}">
+          <div class="progress" aria-label="Fortschritt Handelssitzung">
+            <div class="progress-bar ${pClass}" style="width:${pct}%;"></div>
+          </div>
+
           <div class="name">${ex.name}</div>
           ${badge}
           <div class="meta">
@@ -182,11 +218,13 @@
     function update(){
       const nowUtc = DateTime.utc();
       const nowDE  = nowUtc.setZone(TARGET_TZ).toFormat("EEE, dd.LL, HH:mm");
+
       grid.innerHTML = EXCHANGES.map(ex=>{
-        const st = isOpenNow(ex, nowUtc);
-        const w  = todaysWindowDE(ex, nowUtc);
-        const nx = nextChangeDE(ex, nowUtc);
-        return cardHTML(ex, st, w, nx, nowDE);
+        const st   = isOpenNow(ex, nowUtc);
+        const w    = todaysWindowDE(ex, nowUtc);
+        const nx   = nextChangeDE(ex, nowUtc);
+        const prog = sessionProgress(ex, nowUtc);
+        return cardHTML(ex, st, w, nx, nowDE, prog);
       }).join("");
 
       // LIVE

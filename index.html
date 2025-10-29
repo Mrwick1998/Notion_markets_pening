@@ -7,7 +7,7 @@
   <script src="https://unpkg.com/luxon@3/build/global/luxon.min.js"></script>
   <style>
     :root{
-      --green:#17c964; --bg:transparent;
+      --green:#17c964; --red:#f21361; --bg:transparent;
       --panel:rgba(255,255,255,.95); --text:#111; --muted:#666;
       --shadow:0 4px 12px rgba(0,0,0,.1);
     }
@@ -26,12 +26,12 @@
     .grid{ display:flex; justify-content:center; flex-wrap:wrap; gap:10px; }
 
     .card{ background:var(--panel); border-radius:10px; box-shadow:var(--shadow); padding:8px; width:170px; }
-    /* Nur bestimmte Teile dimmen, nicht die ganze Karte */
+    /* Bei geschlossenen Märkten nur ausgewählte Elemente verblassen */
     .card.closed .dim{ opacity:.35; filter:grayscale(55%); }
 
     .flag{ width:100%; aspect-ratio:3/2; object-fit:cover; border-radius:6px; margin-bottom:6px; }
 
-    /* Bar + % in einer Zeile */
+    /* Progress-Bar + Prozent nebeneinander */
     .progrow{ display:flex; align-items:center; gap:6px; margin:3px 0 6px; }
     .progress{ flex:1; height:6px; background:rgba(0,0,0,.08); border-radius:999px; overflow:hidden; }
     .progress-bar{ height:100%; width:0%; transition:width .6s ease; }
@@ -40,12 +40,12 @@
     .pct-inline{ width:34px; text-align:right; font-size:10px; color:var(--muted); }
 
     .name{ font-weight:600; font-size:12px; margin-bottom:2px; }
-    /* Badge/Status bleibt IMMER klar sichtbar */
-    .badge{ font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:6px; margin:2px 0 6px; }
-    .badge.open{ color:#0c5; }     /* grünlich */
-    .badge.closed{ color:#888; }   /* grau, aber NICHT ausgegraut durch .dim */
+    /* BADGES: immer klar sichtbar; CLOSED jetzt rot */
+    .badge{ font-weight:800; font-size:11px; display:inline-flex; align-items:center; gap:6px; margin:2px 0 6px; letter-spacing:.2px; }
+    .badge.open{ color:var(--green); }
+    .badge.closed{ color:var(--red); }
 
-    /* „Öffnet in …“ – bleibt immer klar sichtbar */
+    /* „öffnet in …“ – bleibt klar sichtbar */
     .openline{ font-size:11px; margin:0 0 6px; }
     .openline strong{ color:var(--text); }
 
@@ -85,16 +85,12 @@
 
     function parseHM(t){ const [h,m]=t.split(":").map(Number); return {hour:h, minute:m, second:0, millisecond:0}; }
 
-    // Session-Fenster mit Übernacht-Behandlung & ggf. Vortagsfenster
     function getWindowDE(ex, nowDE){
       const sch = nowDE.isInDST ? ex.cest : ex.mez;
-
       let openToday  = nowDE.set(parseHM(sch.open));
       let closeToday = nowDE.set(parseHM(sch.close));
       const crosses  = ms(closeToday) <= ms(openToday);
       if (crosses) closeToday = closeToday.plus({days:1});
-
-      // Liegen wir im Fenster der VORNACHT?
       if (crosses){
         const openPrev  = openToday.minus({days:1});
         const closePrev = closeToday.minus({days:1});
@@ -121,7 +117,6 @@
       return { pct: Math.max(0, Math.min(1, passed/total)), state, open, close };
     }
 
-    // T / h / m
     function etaDaysHoursMinutes(msLeft){
       if (msLeft < 0) msLeft = 0;
       const d = Duration.fromMillis(msLeft).shiftTo('days','hours','minutes').toObject();
@@ -136,7 +131,6 @@
     }
 
     function opensInText(ex, nowDE){
-      // nächster Open (heute wenn noch davor, sonst morgen)
       const { open } = getWindowDE(ex, nowDE);
       let nextOpen = open;
       if (ms(nowDE) >= ms(open)) nextOpen = open.plus({days:1});
@@ -155,24 +149,21 @@
     function renderCard(ex, nowDE){
       const prog = progressNow(ex, nowDE);
       const isOpen = prog.state === 'open';
-      const pct = Math.round(prog.pct * 100);
+      const pctDisplay = isOpen ? Math.round(prog.pct * 100) : 0;   // <-- immer 0% wenn geschlossen
+      const pClass = isOpen ? 'open' : (prog.state === 'before' ? 'before' : 'after');
 
-      // Statuszeile:
       const statusLine = isOpen
         ? `<div class="badge open">💼 OPEN</div>`
-        : `<div class="badge closed">🌙 CLOSED</div>`;
+        : `<div class="badge closed">🌙 CLOSED</div>`;   // <-- rot dank CSS oben
 
-      // „öffnet in …“ nur anzeigen, wenn geschlossen – KLAR sichtbar (nicht gedimmt)
       const openIn = isOpen ? "" : `<div class="openline"><strong>öffnet in:</strong> ${opensInText(ex, nowDE)}</div>`;
-
-      const pClass = isOpen ? 'open' : (prog.state === 'before' ? 'before' : 'after');
 
       return `
         <div class="card ${isOpen ? 'open' : 'closed'}">
           <img class="flag dim" src="${ex.flag}" alt="${ex.name}">
           <div class="progrow">
-            <div class="progress dim"><div class="progress-bar ${pClass}" style="width:${pct}%;"></div></div>
-            <div class="pct-inline">${pct}%</div>
+            <div class="progress dim"><div class="progress-bar ${pClass}" style="width:${pctDisplay}%;"></div></div>
+            <div class="pct-inline">${pctDisplay}%</div>
           </div>
 
           <div class="name dim">${ex.name}</div>
